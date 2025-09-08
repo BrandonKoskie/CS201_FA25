@@ -1,7 +1,7 @@
 ---
 title: "CS201 - Introduction & Getting Started with R & RStudio"
 subtitle: "GitHub, warm-up, and a first look at mtcars"
-author: "Amber Camp"
+author: "Amber Camp (edited by Brandon Koskie)" 
 date: "2025-09-08"
 format: html
 editor: visual
@@ -54,7 +54,7 @@ options(scipen = 999)
 
 Explanation:
 
--   
+-   This is a float point error in R where the numbers are stored in binary which causes a small rounding error. So instead of 0.1 it would be 0.9999999 etc.
 
 ------------------------------------------------------------------------
 
