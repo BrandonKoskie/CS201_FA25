@@ -190,14 +190,10 @@ boxplot(mpg ~ cyl, data = mtcars,
 ```
 
 ```{r}
-df <- mtcars %>%
-  pivot_longer(cols = c(wt, mpg), names_to = "variable", values_to = "value")
+par(mfrow = c(1,2))  # two plots side by side
 
-ggplot(df, aes(x = value, fill = variable)) +
-  geom_histogram(alpha = 0.5, position = "identity", bins = 12) +
-  labs(title = "Histogram of Weight and MPG",
-       x = "Value", y = "Count") +
-  theme_minimal()
+hist(mtcars$wt, main = "Weight (wt)", col = "tomato", xlab = "Weight")
+hist(mtcars$mpg, main = "Miles per Gallon (mpg)", col = "skyblue", xlab = "MPG")
 
 ```
 
