@@ -107,15 +107,32 @@ Start by exploring the data below. It's always good to ensure you understand wha
 
 ```{r}
 data(mtcars) # reads in the data & adds it to your environment as a dataframe
+
+
+mtcars <- mtcars %>% 
+  rownames_to_column("model")
+
+
+
 View(mtcars) # opens up the datafram for viewing
 head(mtcars) # displays the top few lines of the dataframe
 summary(mtcars) # displays a summary of all variables
 ?mtcars # will open up documentation in your Help tab. works for packages, functions, too!
+
+tail(mtcars)
 ```
 
 -   How many rows and columns are in the dataframe?
+
+    32 rows 12 columns
+
 -   What variables look interesting?
+
+    mpg, wt, hp, cyl
+
 -   How might you view the last few rows of the dataframe with a single function?
+
+    tail(your_dataframe) so tail(mtcars)
 
 ------------------------------------------------------------------------
 
@@ -156,12 +173,32 @@ plot(mtcars$wt, mtcars$mpg,
 
 ## Exit Ticket
 
-Create a scatterplot of two variables of your choice (but not `mpg` vs. `wt`). Feel free to try a `ggplot2` version if you have some R experience!
+Create a scatterplot and histogram and box plot of two variables of your choice (but not `mpg` vs. `wt`). Feel free to try a `ggplot2` version if you have some R experience!
 
 ```{r}
 plot(mtcars$cyl, mtcars$mpg,
      xlab = "Cylinders", ylab = "MPG",
      main = "Cars with more cylinders tend to have lower MPG")
+```
+
+```{r}
+boxplot(mpg ~ cyl, data = mtcars,
+        xlab = "Cylinders",
+        ylab = "MPG",
+        main = "Cars with More Cylinders Tend to Have Lower MPG",
+        col = "lightblue")
+```
+
+```{r}
+df <- mtcars %>%
+  pivot_longer(cols = c(wt, mpg), names_to = "variable", values_to = "value")
+
+ggplot(df, aes(x = value, fill = variable)) +
+  geom_histogram(alpha = 0.5, position = "identity", bins = 12) +
+  labs(title = "Histogram of Weight and MPG",
+       x = "Value", y = "Count") +
+  theme_minimal()
+
 ```
 
 Save, stage, commit, and push to GitHub!!
