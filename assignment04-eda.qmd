@@ -1,0 +1,293 @@
+---
+title: "Assignment 4: Exploratory Data Analysis"
+author: "Brandon Koskie"
+date: "`r Sys.Date()`"
+format: html
+editor: visual
+---
+
+## Overview
+
+Due: **Sunday, 9/28 11:59pm**
+
+In this assignment, you will practice Exploratory Data Analysis (EDA) by making plots from a **Kaggle dataset of your choice**.
+
+You will submit **at least 4 different plot types**, with short written interpretations for each.
+
+Part 1 is worth a total of 1 point, and Part 2 is worth 4 points (1 point for each plot & interpretation).
+
+## Part 1: Get Your Data
+
+1.  Go to [Kaggle Datasets](https://www.kaggle.com/datasets), create an account, and choose a dataset that interests you. Ensure your data has:
+    1.  At least 4 variables
+    2.  At least one categorical and one continuous variable
+    3.  I recommend data that contains at least 50-100 observations
+    4.  Tip: Open the CSV on Kaggle first and skim the columns to check that it meets these requirements
+2.  Download the dataset as a CSV file.
+3.  Place the CSV in your class R project data folder.
+4.  Read it into R with `read_csv()`.
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(treemapify)
+library(vroom)
+library(purrr)
+```
+
+```{r}
+
+data_path <- "C:/Users/brand/OneDrive/Documents/CS201_FA25/data/"
+years <- c(2016, 2017, 2018, 2021, 2022, 2023)
+file_list <- paste0(data_path, "Elk_Harvest_", years, ".csv")
+
+# Read each file and add a year column
+elk_data <- map2_dfr(file_list, years, ~ {
+  vroom(.x, col_types = cols(.default = "c")) %>%
+    mutate(year = .y)
+})
+```
+
+```{r, message=FALSE}
+
+#Keep only the columns we actually care about
+elk_clean <- elk_data %>%
+  select(
+    year,
+    zone = Zone,
+    unit_name = `Unit Name`,
+    season_tag = `Season/Tag/Hunt`,
+    total_hunters = `Total Hunters`,
+    harvest_total = `Harvest Total`,
+    success_pct = `Success %`,
+    antlerless = Antlerless,
+    total_bulls = `Total Bulls`,
+    spikes = Spikes,
+    two_pt = `2 Points`,
+    three_pt = `3 Points`,
+    four_pt = `4 Point`,
+    five_pt = `5 Point`,
+    six_plus_pt = `6 Point +`
+  )
+
+#Clean numeric columns
+elk_clean <- elk_clean %>%
+  mutate(across(c(total_hunters, harvest_total, success_pct, antlerless, total_bulls, spikes,
+                  two_pt, three_pt, four_pt, five_pt, six_plus_pt),
+                ~ as.numeric(str_replace_all(., ",|%", ""))))
+
+#Quick check
+glimpse(elk_clean)
+
+```
+
+```{r}
+elk_clean <- elk_clean %>%
+  mutate(
+    harvest_total = rowSums(across(c(antlerless, spikes, two_pt, three_pt, four_pt, five_pt, six_plus_pt)), na.rm = TRUE)
+  )
+
+```
+
+```{r}
+# Pivot bull point columns to long format
+elk_long <- elk_clean %>%
+  pivot_longer(
+    cols = c(antlerless, spikes, two_pt, three_pt, four_pt, five_pt, six_plus_pt),
+    names_to = "antler_type",
+    values_to = "count"
+  )
+
+#Make antler_type more readable
+elk_long <- elk_long %>%
+  mutate(
+    antler_type = case_when(
+      antler_type == "antlerless" ~ "Antlerless",
+      antler_type == "spikes" ~ "Spike",
+      antler_type == "two_pt" ~ "2 Points",
+      antler_type == "three_pt" ~ "3 Points",
+      antler_type == "four_pt" ~ "4 Points",
+      antler_type == "five_pt" ~ "5 Points",
+      antler_type == "six_plus_pt" ~ "6+ Points",
+      TRUE ~ antler_type
+    )
+  )
+
+#Quick check
+glimpse(elk_long)
+```
+
+### Describe your data
+
+Data author: **Itsandrewxd**
+
+Link: <https://www.kaggle.com/datasets/itsandrewxd/oregonelkharvest2016-2023?resource=download>
+
+Description: This dataset contains elk harvest statistics in Oregon from 2016 to 2023. It includes success percentages, total tags issued, average days hunted, season types (controlled/general), and success rates for both archery and rifle hunters.
+
+### Preview your data
+
+Use some of the strategies you've learned in this class or picked up elsewhere to summarize and quickly explore your data.
+
+```{r}
+elk_long %>%
+  summarise(
+    total_rows = n(),
+    total_units = n_distinct(unit_name),
+    total_zones = n_distinct(zone),
+    total_years = n_distinct(year),
+    total_hunters = sum(total_hunters, na.rm = TRUE),
+    total_harvest = sum(harvest_total, na.rm = TRUE),
+    mean_success = mean(success_pct, na.rm = TRUE)
+  )
+```
+
+### Summary stats
+
+Before you make plots, you must also:
+
+-   Show basic summaries of your dataset, including:
+
+    -   `count()` for categorical variables (to see category frequencies)
+
+    -   `mean()`, `median()`, `sd()`, `min()`, `max()` for at least one numeric variable
+
+```{r}
+# Frequency of zones
+elk_long %>%
+  count(zone, sort = TRUE)
+
+# Frequency of antler types
+elk_long %>%
+  count(antler_type, sort = TRUE)
+
+# Frequency of seasons/tags
+elk_long %>%
+  count(season_tag, sort = TRUE)
+
+```
+
+```{r}
+elk_long %>%
+  summarise(
+    mean_harvest = mean(harvest_total, na.rm = TRUE),
+    median_harvest = median(harvest_total, na.rm = TRUE),
+    sd_harvest = sd(harvest_total, na.rm = TRUE),
+    min_harvest = min(harvest_total, na.rm = TRUE),
+    max_harvest = max(harvest_total, na.rm = TRUE),
+  )
+
+```
+
+Write 2–3 sentences here: What do the category counts tell you? What does the numeric summary show about spread, center, or outliers?
+
+The category count shows us which zones, antler types, and season tags take up the majority of the dataset. “Northeast,” “Northwest,” and “Southwest” are the most common, indicating that these regions dominate recorded hunts. For antler_type, every type appears the same number of times (1,791), which makes sense because the dataset is in long format so each hunt is split across the six antler categories. Looking at season_tag, the most common reported hunts are “Eastern Elk Archery” and “Early Bow Elk,” while many entries are missing (NA) or labeled as generic placeholders like “Season/Tag/Hunt.” This suggests that certain hunts are the main focus of reporting, and others are underrepresented or incomplete.
+
+The numeric summary shows that the distribution of harvest totals is highly skewed. The mean (≈84) is much higher than the median (17), indicating that a few very large harvests pull the average upward. The extremely large standard deviation (≈574) and the wide range from 0 to 12,251 highlight high variability and the presence of extreme outliers relative to the typical hunt.
+
+Part 2:
+
+Create at least 4 plots, each of a different type. At least one of your four plots must use different variables than the others.
+
+Each plot should have:
+
+-   A title and labeled axes
+
+-   A short interpretation (2-3 sentences) underneath
+
+Use the EDA Part 3 notes as your reference. Since this is an EDA assignment, your plots can be plain, but consider adding colors, themes, or interactivity for interpretability and visual appeal if you know how.
+
+### Plot 1
+
+```{r}
+# Summarize total harvest by zone
+zone_summary <- elk_clean %>%
+  group_by(zone) %>%
+  summarize(total_harvest = sum(harvest_total, na.rm = TRUE)) %>%
+  arrange(desc(total_harvest))
+
+# Bar plot
+ggplot(zone_summary, aes(x = reorder(zone, -total_harvest), y = total_harvest, fill = zone)) +
+  geom_col(show.legend = FALSE) +
+  labs(
+    title = "Total Elk Harvest by Zone",
+    x = "Zone",
+    y = "Total Harvest"
+  ) +
+  theme_minimal()
+
+```
+
+Interpretation: The plot shows that certain zones contribute far more to the overall harvest than others, indicating either higher elk density or more hunters in those areas. For exmaple the Northeast ranks the highest performing zone in terms of total harvests while South central is contributing the least. Zones with very low harvest totals might represent remote or less-accessible regions. As for the NA portion, this is because a huge number of the units have not been affiliated with a specific zone in the data set which leads to the question not being fully answered on how well these zones produce.
+
+### Plot 2
+
+```{r}
+harvest_by_antler <- elk_long %>%
+  group_by(antler_type) %>%
+  summarise(total_harvest = sum(count, na.rm = TRUE))
+```
+
+```{r}
+# Treemap of harvest by antler type
+ggplot(harvest_by_antler, aes(
+  area = total_harvest,
+  fill = antler_type,
+  label = paste(antler_type, "\n", total_harvest)
+)) +
+  geom_treemap() +
+  geom_treemap_text(
+    colour = "white",
+    place = "centre",
+    grow = TRUE,
+  ) +
+  labs(title = "Treemap of Total Harvest by Antler Type") +
+  theme_minimal()
+```
+
+Interpretation: The treemap shows that hunters most commonly take antlerless elk, followed by spike antlers, 5-point and 6+ point antlers, with 4-point antlers being less frequently harvested. This suggests that female or young male elk make up a large portion of the harvest, while the older male elk is less common but still significant. This could be due to regulations prioritizing the hunt of anterless elk to manage population size and there could be more opportunites to hunt antlerless animals. Overall, there’s a clear preference or availability pattern in the types of antlers harvested.
+
+### Plot 3
+
+```{r}
+# Scatter plot of Success % vs Total Hunters
+ggplot(elk_clean, aes(x = total_hunters, y = success_pct)) +
+  geom_point(color = "darkred", alpha = 0.6) +
+  geom_smooth(method = "lm", color = "black", se = FALSE) +
+  labs(
+    title = "Hunter Success Rate vs Total Hunters",
+    x = "Total Hunters",
+    y = "Success Percentage"
+  ) +
+  theme_minimal()
+
+
+```
+
+Interpretation: For this scatterplot, most points are clustered at lower hunter numbers and lower success percentages. What is possible for the higher percentages is that if there are fewer hunters then the area has more elk to harvest. A few outliers exist where low percentages occur for certain hunts, which could indicate unusual conditions or reporting errors.
+
+### Plot 4
+
+```{r}
+# Line plot of harvest per year
+ggplot(harvest_by_year, aes(x = factor(year), y = harvest_total, group = 1)) +
+  geom_line(color = "steelblue", linewidth = 1) +
+  geom_point(color = "darkblue", size = 3) +
+  labs(
+    title = "Total Elk Harvest per Year",
+    x = "Year",
+    y = "Total Harvested"
+  ) +
+  theme_minimal()
+
+
+
+
+```
+
+Interpretation: The line plot shows the total elk harvest peaked in 2017, with 2016 close behind. After 2017, the harvest declined sharply through 2018–2022, likely due to fewer hunters, regulations, or missing data. In 2023, there is a slight uptick, suggesting a possible recovery or increased hunting activity.
+
+## Push to GitHub to Submit!
+
+Assignment is due Sunday 9/28 at 11:59 pm.
