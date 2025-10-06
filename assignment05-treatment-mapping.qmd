@@ -1,0 +1,242 @@
+---
+title: "Assignment 5: Substance Abuse Treatment Mapping"
+subtitle: "Brandon Koskie"
+author: "Amber Camp"
+date: "`r Sys.Date()`"
+format: html
+editor: visual
+---
+
+## Overview
+
+Due: **Tuesday, 10/7 11:59pm**
+
+In this assignment, you will apply analytic and mapping skills on the TEDS-D dataset from SAMHSA.
+
+Refer to the following files for reference, though some of what is asked of you in this assignment will require logic beyond what was discussed here:
+
+-   week06-treatment-mapping-part1.qmd
+
+-   week06-treatment-mapping-part2.qmd
+
+Total time estimate: Two hours
+
+## Load Packages and Data
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(here)
+library(janitor) 
+library(arrow) # lets us read/write parquet and feather files
+library(sf) # "simple features" for spatial data
+library(urbnmapr) # access to US state/country shapefiles for mapping
+library(naniar) # tools for exploring and visualizing missing data
+library(ggiraph) # makes ggplot charts interactive
+options(scipen = 99) # turns off scientific notation
+
+```
+
+```{r}
+teds_d <- read_parquet(here("data/teds_d_clean.parquet"))
+```
+
+## Question 1
+
+Make an interactive map with `ggiraph` showing the percentage of completed treatments that end with no use at discharge. I am looking for a single interactive map as the final product.
+
+Hint: Break this question down into bite-sized steps, like we did in Part 2. The `freq1_d` column contains information about use at discharge. Check your denominator carefully — should it be *all cases* or *completed cases*?
+
+```{r}
+states_sf <- states %>%
+  select(state_name, state_abbv, long, lat, group) %>%
+  rename(NAME = state_name, stfips = state_abbv) %>%
+  st_as_sf(coords = c("long", "lat"), crs = 4326, agr = "constant") %>%
+  group_by(stfips, NAME, group) %>%
+  summarize(geometry = sf::st_combine(geometry), .groups = "drop") %>%
+  st_cast("POLYGON")
+
+teds_completed <- teds_d %>%
+  filter(reason == "Treatment completed")
+   
+state_lookup <- tibble(
+  stfips_num = 1:50,
+  stfips_abbr = state.abb
+)
+
+teds_completed <- teds_completed %>%
+  left_join(state_lookup, by = c("stfips" = "stfips_num")) %>%
+  mutate(stfips = stfips_abbr) %>%
+  select(-stfips_abbr)
+
+
+percent_completed_by_state <- teds_completed %>%
+  group_by(stfips) %>%
+  summarize(
+    total_completed = n(),
+    no_use = sum(freq1_d == "no use", na.rm = TRUE),
+    percentage_completed = round((no_use / total_completed) * 100, 1),
+    .groups = "drop"
+  )
+
+
+percent_completed_by_state_map <- states_sf %>%
+  left_join(percent_completed_by_state, by = "stfips")
+
+
+percent_completed_by_state_map <- percent_completed_by_state_map %>%
+  mutate(
+    percentage_completed_cat = cut(
+      percentage_completed,
+      breaks = c(0, 25, 50, 75, 100),
+      labels = c("0–25%", "25–50%", "50–75%", "75–100%"),
+      include.lowest = TRUE
+    ),
+    percentage_completed_cat = forcats::fct_explicit_na(
+      percentage_completed_cat,
+      na_level = "No Completed Treatments Reported"
+    )
+  )
+
+
+map_plot <- ggplot(percent_completed_by_state_map) +
+  geom_sf_interactive(
+    aes(
+      geometry = geometry,
+      fill = percentage_completed_cat,
+      tooltip = paste0(
+        "<b>", NAME, "</b><br>",
+        "No Use at Discharge: ", ifelse(is.na(percentage_completed), "N/A", paste0(percentage_completed, "%")),
+        "<br>Total Completed: ", ifelse(is.na(total_completed), 0, total_completed)
+      )
+    ),
+    color = "white",
+    size = 0.25
+  ) +
+  scale_fill_manual(
+    values = c(
+      "0–25%" = "#fee5d9",
+      "25–50%" = "#fcae91",
+      "50–75%" = "#fb6a4a",
+      "75–100%" = "#cb181d",
+      "No Completed Treatments Reported" = "grey80"
+    ),
+    name = "No Use at Discharge"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(face = "bold", size = 14)
+  ) +
+  labs(
+    title = "Percentage of Completed Treatments Ending with No Use at Discharge",
+    caption = "Source: TEDS-D 2021"
+  )
+
+
+girafe(ggobj = map_plot)
+```
+
+## Question 2
+
+Treatment outcomes can vary depending on the type of service patients receive and the length of stay in treatment.
+
+-   Investigate how the percentage of treatments completed and the percentage of treatments that end with no use at discharge differ when you look at service type and length of stay.
+
+-   Create at least three different visualizations to help answer this question.
+
+-   At least one visualization should focus on service type and at least one should focus on length of stay. A third visualization should compare the two.
+
+-   After making your visualizations, write a short summary (3-ish sentences) that explains the main patterns you observe. Please use full, grammatical sentences.
+
+```{r}
+teds_completed <- teds_d %>%
+  filter(reason == "Treatment completed")
+```
+
+```{r}
+# Summarize outcomes by service type
+service_summary <- teds_d %>%
+  group_by(services_d) %>%
+  summarize(
+    total = n(),
+    completed = sum(reason == "Treatment completed", na.rm = TRUE),
+    no_use = sum(freq1_d == "no use", na.rm = TRUE),
+    pct_completed = completed / total * 100,
+    pct_no_use = no_use / total * 100,
+    .groups = "drop"
+  )
+
+ggplot(service_summary, aes(x = reorder(services_d, pct_completed), y = pct_completed)) +
+  geom_col(fill = "#2c7fb8") +
+  coord_flip() +
+  labs(
+    title = "Percentage of Treatments Completed by Service Type",
+    x = "Service Type",
+    y = "Percentage Completed"
+  ) +
+  theme_minimal()
+
+```
+
+```{r}
+#Bin length of stay into categories
+teds_d <- teds_d %>%
+  mutate(los_bin = cut(los,
+                       breaks = c(0, 30, 60, 90, 180, 365, Inf),
+                       labels = c("0-30","31-60","61-90","91-180","181-365",">365"),
+                       include.lowest = TRUE))
+
+los_summary <- teds_d %>%
+  group_by(los_bin) %>%
+  summarize(
+    total = n(),
+    completed = sum(reason == "Treatment completed", na.rm = TRUE),
+    no_use = sum(freq1_d == "no use", na.rm = TRUE),
+    pct_completed = completed / total * 100,
+    pct_no_use = no_use / total * 100,
+    .groups = "drop"
+  )
+
+ggplot(los_summary, aes(x = los_bin, y = pct_no_use)) +
+  geom_col(fill = "#e34a33") +
+  labs(
+    title = "Percentage of Treatments Ending with No Use by Length of Stay",
+    x = "Length of Stay (Days)",
+    y = "Percentage with No Use at Discharge"
+  ) +
+  theme_minimal()
+
+```
+
+```{r}
+#Summarize outcomes by service type and length of stay
+service_los_summary <- teds_d %>%
+  group_by(services_d, los_bin) %>%
+  summarize(
+    total = n(),
+    completed = sum(reason == "Treatment completed", na.rm = TRUE),
+    no_use = sum(freq1_d == "no use", na.rm = TRUE),
+    pct_no_use = no_use / total * 100,
+    .groups = "drop"
+  )
+
+#Plot heatmap of no use by service type and length of stay
+ggplot(service_los_summary, aes(x = los_bin, y = services_d, fill = pct_no_use)) +
+  geom_tile(color = "white") +
+  scale_fill_viridis_c(option = "plasma", na.value = "grey80") +
+  labs(
+    title = "Percentage of Treatments Ending with No Use by Service Type and Length of Stay",
+    x = "Length of Stay (Days)",
+    y = "Service Type",
+    fill = "% No Use"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+Summary: Treatments provided in Detox 24-hour hospital inpatient programs have the highest completion rates, while ambulatory, intensive outpatient services show the lowest. When looking at length of stay, treatments lasting 31–60 days have the highest percentage of cases ending with no use at discharge, while shorter stays of 0–30 days have lower rates. Combining service type and length of stay, we see that for most services, the percentage of no use increases in the 31–60 day range and is generally lower in the 0–30 day range, this indicates that both service type and length of stay influence treatment outcomes.
+
+## Push to GitHub to Submit!
+
+Assignment is due Tuesday 10/7 at 11:59 pm.
